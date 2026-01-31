@@ -5,8 +5,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httputil"
-"os"
-"strings"
+	"os"
 	"os/signal"
 	"syscall"
 	"time"
@@ -30,8 +29,11 @@ func loadBalancerHandler(p *pool.ServerPool, w http.ResponseWriter, r *http.Requ
 }
 
 func main() {
-	serversStr := os.Getenv("BACKEND_URLS")
-	servers := strings.Split(serversStr, ",")
+	servers := []string{
+		"http://localhost:8081",
+		"http://localhost:8082",
+		"http://localhost:8083",
+	}
 
 	p := pool.NewServerPool(servers)
 
