@@ -5,7 +5,7 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"os"
+	"sync"
 )
 
 func launchMiniServer(port string) {
@@ -28,10 +28,16 @@ func launchMiniServer(port string) {
 }
 
 func main() {
-	port := os.Getenv("SERVER_PORT")
-	if port == "" {
-		port = "8080"
+	ports := []string{"8081", "8082", "8083"}
+	var wg sync.WaitGroup
+
+	for _, port := range ports {
+		wg.Add(1)
+		go func(p string) {
+			defer wg.Done()
+			launchMiniServer(p)
+		}(port)
 	}
 
-	launchMiniServer(port)
+	wg.Wait()
 }
