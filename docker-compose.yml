@@ -1,0 +1,57 @@
+services:
+  backend-1:
+    container_name: backend-1
+    build:
+      context: .
+      dockerfile: build/backend.Dockerfile
+    environment:
+      - SERVER_PORT=8081
+    ports:
+      - "8081:8080"
+    networks:
+      backend:
+        aliases:
+          - backend
+
+  backend-2:
+    container_name: backend-2
+    build:
+      context: .
+      dockerfile: build/backend.Dockerfile
+    environment:
+      - SERVER_PORT=8082
+    ports:
+      - "8082:8080"
+    networks:
+      backend:
+        aliases:
+          - backend
+
+  backend-3:
+    container_name: backend-3
+    build:
+      context: .
+      dockerfile: build/backend.Dockerfile
+    environment:
+      - SERVER_PORT=8083
+    ports:
+      - "8083:8080"
+    networks:
+      backend:
+        aliases:
+          - backend
+
+  load-balancer:
+    container_name: load-balancer
+    build:
+      context: .
+      dockerfile: build/load-balancer.Dockerfile
+    environment:
+      - BACKEND_URLS=http://backend:8081,http://backend:8082,http://backend:8083
+    ports:
+      - "8080:8080"
+    networks:
+      - backend
+networks:
+  backend:
+    driver: bridge
