@@ -4,10 +4,9 @@ import (
 	"context"
 	"log"
 	"net/http"
-	"net/http/httputil"
-"os"
-"strings"
+	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -15,18 +14,23 @@ import (
 )
 
 func loadBalancerHandler(p *pool.ServerPool, w http.ResponseWriter, r *http.Request) {
-	peer := p.GetNextPeer()
-	log.Printf("Forwarding request to %s", peer.Host)
+	backend := p.GetNextBackend()
+	if backend == nil {
+		log.Println("No available servers")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		w.Write([]byte("Service unavailable"))
+		return
+	}
+	// log.Printf("Forwarding request to %s", backend.URL.Host)
 
-	proxy := httputil.NewSingleHostReverseProxy(peer)
-
-	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-		log.Printf("[%s] connection failed: %v", peer.Host, err)
+	backend.Proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+		log.Printf("[%s] connection failed: %v", backend.URL.Host, err)
+		p.MarkServerDown(backend.URL)
 		w.WriteHeader(http.StatusServiceUnavailable)
 		w.Write([]byte("Service unavailable"))
 	}
 
-	proxy.ServeHTTP(w, r)
+	backend.Proxy.ServeHTTP(w, r)
 }
 
 func main() {
