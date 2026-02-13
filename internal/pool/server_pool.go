@@ -2,6 +2,7 @@ package pool
 
 import (
 	"log"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -27,16 +28,33 @@ func NewServerPool(servers []string) *ServerPool {
 		servers: make([]*Backend, len(servers)),
 		current: 0,
 	}
+	transport := &http.Transport{
+		MaxIdleConns:        1000,
+		MaxIdleConnsPerHost: 250,
+		IdleConnTimeout:     90 * time.Second,
+		DisableCompression:  true,
+	}
+
 	for i, s := range servers {
 		u, err := url.Parse(s)
 		if err != nil {
 			log.Fatal(err)
 		}
+
+		proxy := httputil.NewSingleHostReverseProxy(u)
+		proxy.Transport = transport
+
 		pool.servers[i] = &Backend{
 			URL:   u,
-			Proxy: httputil.NewSingleHostReverseProxy(u),
+			Proxy: proxy,
 		}
 		pool.servers[i].Alive.Store(true)
+		pool.servers[i].Proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+			log.Printf("[%s] connection failed: %v", pool.servers[i].URL.Host, err)
+			pool.MarkServerDown(pool.servers[i].URL)
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte("Service unavailable"))
+		}
 	}
 	return pool
 }
@@ -67,10 +85,8 @@ func (s *ServerPool) GetNextBackend() *Backend {
 }
 
 func (s *ServerPool) MarkServerDown(server *url.URL) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	for i, backend := range s.servers {
-		if backend.URL.String() == server.String() {
+		if backend.URL == server {
 			s.servers[i].Alive.Store(false)
 			go s.StartHealthCheck(server)
 			break
@@ -83,9 +99,9 @@ func (s *ServerPool) StartHealthCheck(server *url.URL) {
 	defer ticker.Stop()
 
 	for range ticker.C {
-		resp, err := http.Get(server.String())
+		conn, err := net.DialTimeout("tcp", server.Host, 2*time.Second)
 		if err == nil {
-			resp.Body.Close()
+			conn.Close()
 			s.MarkServerUp(server)
 			return
 		}
@@ -93,11 +109,8 @@ func (s *ServerPool) StartHealthCheck(server *url.URL) {
 }
 
 func (s *ServerPool) MarkServerUp(server *url.URL) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	for i, backend := range s.servers {
-		if backend.URL.String() == server.String() {
+		if backend.URL == server {
 			s.servers[i].Alive.Store(true)
 			break
 		}
