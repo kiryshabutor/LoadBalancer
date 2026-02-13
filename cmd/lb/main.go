@@ -21,7 +21,7 @@ func loadBalancerHandler(p *pool.ServerPool, w http.ResponseWriter, r *http.Requ
 		w.Write([]byte("Service unavailable"))
 		return
 	}
-	// log.Printf("Forwarding request to %s", backend.URL.Host)
+	log.Printf("Forwarding request to %s", backend.URL.Host)
 
 	backend.Proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
 		log.Printf("[%s] connection failed: %v", backend.URL.Host, err)
