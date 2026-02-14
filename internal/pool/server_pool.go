@@ -49,9 +49,11 @@ func NewServerPool(servers []string) *ServerPool {
 			Proxy: proxy,
 		}
 		pool.servers[i].Alive.Store(true)
+
+		backend := pool.servers[i]
 		pool.servers[i].Proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-			log.Printf("[%s] connection failed: %v", pool.servers[i].URL.Host, err)
-			pool.MarkServerDown(pool.servers[i].URL)
+			log.Printf("[%s] connection failed: %v", backend.URL.Host, err)
+			pool.MarkServerDown(backend)
 			w.WriteHeader(http.StatusServiceUnavailable)
 			w.Write([]byte("Service unavailable"))
 		}
@@ -84,35 +86,29 @@ func (s *ServerPool) GetNextBackend() *Backend {
 	return nil
 }
 
-func (s *ServerPool) MarkServerDown(server *url.URL) {
-	for i, backend := range s.servers {
-		if backend.URL == server {
-			s.servers[i].Alive.Store(false)
-			go s.StartHealthCheck(server)
-			break
-		}
+func (s *ServerPool) MarkServerDown(backend *Backend) {
+	if backend.Alive.Swap(false) {
+		log.Printf("Server %s is down", backend.URL.Host)
+		go s.StartHealthCheck(backend)
 	}
 }
 
-func (s *ServerPool) StartHealthCheck(server *url.URL) {
-	ticker := time.NewTicker(5 * time.Second)
+func (s *ServerPool) StartHealthCheck(backend *Backend) {
+	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
 	for range ticker.C {
-		conn, err := net.DialTimeout("tcp", server.Host, 2*time.Second)
+		conn, err := net.DialTimeout("tcp", backend.URL.Host, 1*time.Second)
 		if err == nil {
 			conn.Close()
-			s.MarkServerUp(server)
+			s.MarkServerUp(backend)
 			return
 		}
 	}
 }
 
-func (s *ServerPool) MarkServerUp(server *url.URL) {
-	for i, backend := range s.servers {
-		if backend.URL == server {
-			s.servers[i].Alive.Store(true)
-			break
-		}
+func (s *ServerPool) MarkServerUp(backend *Backend) {
+	if !backend.Alive.Swap(true) {
+		log.Printf("Server %s is up", backend.URL.Host)
 	}
 }
